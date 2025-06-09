@@ -3,11 +3,18 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-console.log('Supabase URL:', supabaseUrl?.slice(0, 8) + '...')  // Only log the start for security
-console.log('Supabase Anon Key:', supabaseAnonKey?.slice(0, 8) + '...')
+// More detailed logging
+console.log('Environment Variables Check:')
+console.log('VITE_SUPABASE_URL:', typeof supabaseUrl, supabaseUrl ? 'exists' : 'missing')
+console.log('VITE_SUPABASE_ANON_KEY:', typeof supabaseAnonKey, supabaseAnonKey ? 'exists' : 'missing')
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Please check your .env file.')
+  throw new Error(
+    `Missing Supabase environment variables. 
+     VITE_SUPABASE_URL: ${supabaseUrl ? 'exists' : 'missing'}
+     VITE_SUPABASE_ANON_KEY: ${supabaseAnonKey ? 'exists' : 'missing'}
+     Please check your Vercel environment variables configuration.`
+  )
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
