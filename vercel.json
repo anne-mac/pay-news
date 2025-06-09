@@ -1,5 +1,5 @@
 {
-  "buildCommand": "vite build",
+  "buildCommand": "echo \"VITE_SUPABASE_URL=$VITE_SUPABASE_URL\" && vite build",
   "devCommand": "vite",
   "installCommand": "npm install",
   "framework": "vite",
