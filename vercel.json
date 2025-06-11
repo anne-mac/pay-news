@@ -3,15 +3,10 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "functions": {
-    "api/chat/index.js": {
-      "runtime": "@vercel/node@18"
-    }
-  },
   "routes": [
     {
       "src": "/api/chat",
-      "dest": "/api/chat"
+      "dest": "/api/chat/index.js"
     },
     {
       "src": "/(.*)",
