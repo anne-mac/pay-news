@@ -15,7 +15,7 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Welcome to PayNews</h1>
+        <h1>🚀 PayNews - Your Fintech News Hub</h1>
       </header>
       <main className="app-main">
         <FetchNewsButton />
