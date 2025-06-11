@@ -3,6 +3,7 @@ export interface Article {
   title: string
   url: string
   summary: string
+  relevance_score: number
   fetched_at: string
   created_at: string
 }

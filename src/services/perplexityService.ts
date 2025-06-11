@@ -4,27 +4,40 @@ import type { ArticleInsert } from '../types/database.types'
 const API_URL = import.meta.env.PROD ? '/api/chat' : 'http://localhost:3001/api/chat'
 
 const generateNewsPrompt = () => `
-Find 5 recent news articles about fintech companies, focusing on:
-- Stripe
-- PayOS
-- Sardine
-- Plaid
-- Visa/Mastercard
+Find the top 20 most relevant and recent news articles about AI and agentic payments in fintech, focusing on these companies and topics:
 
-For each article, you MUST provide ALL of the following fields (no fields can be empty or missing):
+COMPANIES:
+- Stripe (AI payment processing, autonomous payments)
+- PayOS (AI-driven payment infrastructure)
+- Sardine (AI fraud prevention, autonomous risk)
+- Plaid (AI financial connections, autonomous banking)
+- Visa/Mastercard (AI payment networks)
+
+KEY TOPICS:
+- AI-powered payment processing
+- Autonomous/agentic payment systems
+- AI fraud detection in payments
+- Machine learning in financial transactions
+- AI-driven financial automation
+
+For each article, you MUST provide ALL of the following fields:
 {
   "title": "Full article title",
   "url": "Complete, direct link to the article",
-  "summary": "One sentence summary of the key points"
+  "summary": "One sentence summary focusing on AI/autonomous payment aspects",
+  "relevance_score": "Score from 1-10 based on relevance to AI payments"
 }
 
-IMPORTANT:
-- ALL fields must be provided for each article
-- URLs must be complete and valid
-- Summaries must be informative and complete
-- Do not include any articles with missing information
+REQUIREMENTS:
+1. ALL fields must be provided for each article
+2. URLs must be complete, valid, and directly accessible
+3. Summaries must specifically highlight AI/autonomous payment aspects
+4. Only include articles from verifiable sources
+5. Articles must have a relevance score of 7 or higher
+6. Do not include articles without specific, working URLs
+7. Sort results by relevance_score (descending)
 
-Format your response as a JSON array of exactly 5 articles. Only include articles from reputable sources.`.trim()
+Format your response as a JSON array. Return only the most relevant articles that meet ALL criteria.`.trim()
 
 export async function fetchPerplexityNews(): Promise<ArticleInsert[]> {
   try {
@@ -74,21 +87,33 @@ export async function fetchPerplexityNews(): Promise<ArticleInsert[]> {
       articles = JSON.parse(jsonContent)
       console.log('Successfully parsed articles:', articles)
 
-      // Validate each article has required fields
+      // Validate each article has required fields and meets criteria
       articles = articles.filter(article => {
-        const isValid = article.title && article.url && article.summary &&
+        const isValid = article.title && 
+                       article.url && 
+                       article.summary &&
+                       article.relevance_score &&
                        typeof article.title === 'string' && 
                        typeof article.url === 'string' && 
                        typeof article.summary === 'string' &&
+                       typeof article.relevance_score === 'number' &&
                        article.title.trim() !== '' &&
                        article.url.trim() !== '' &&
-                       article.summary.trim() !== ''
+                       article.summary.trim() !== '' &&
+                       article.relevance_score >= 7 &&
+                       article.url.startsWith('http')
 
         if (!isValid) {
           console.warn('Filtering out invalid article:', article)
         }
         return isValid
       })
+
+      // Sort by relevance score
+      articles.sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0))
+
+      // Take top 9 articles for the 3x3 grid
+      articles = articles.slice(0, 9)
 
       if (articles.length === 0) {
         throw new Error('No valid articles found in response')
