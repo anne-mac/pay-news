@@ -24,16 +24,17 @@ body {
 
 .app-header {
   padding: 2rem;
-  background-color: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 .app-header h1 {
   max-width: 1200px;
   margin: 0 auto;
-  font-size: 2rem;
+  font-size: 2.5rem;
   font-weight: 700;
-  color: var(--primary-color);
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .connection-status {
@@ -88,4 +89,30 @@ body {
 
 .read-the-docs {
   color: #888;
+}
+
+.counter-section {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.counter-section h2 {
+  color: var(--text-color);
+  margin: 0 0 1rem 0;
+  font-size: 1.8rem;
+}
+
+.count-display {
+  font-size: 4rem;
+  font-weight: bold;
+  color: var(--primary-color);
+  margin: 1.5rem 0;
+}
+
+.button-group {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
 }
