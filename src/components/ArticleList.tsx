@@ -1,85 +1,135 @@
+import { useState } from 'react'
 import { useArticles } from '../hooks/useArticles'
 import type { Article } from '../types/database.types'
+import { FilterBar, type FilterOptions } from './FilterBar'
+import { FetchNewsButton } from './FetchNewsButton'
 import './ArticleList.css'
 
 export function ArticleList() {
-  console.log('ArticleList component rendering')
   const { articles, loading, error } = useArticles()
+  const [filters, setFilters] = useState<FilterOptions>({
+    companies: [],
+    topics: [],
+    dateRange: 'all',
+    minRelevanceScore: 7
+  })
+  const [showAllArticles, setShowAllArticles] = useState(false)
 
-  console.log('ArticleList state:', { articles, loading, error }) // Debug log
+  const filterArticles = (articles: Article[]) => {
+    if (!articles) return []
+    
+    const filtered = articles.filter(article => {
+      // Filter by minimum relevance score
+      if (article.relevance_score < filters.minRelevanceScore) {
+        return false
+      }
 
-  if (loading) {
-    return (
-      <div className="articles-loading">
-        <div className="loading-spinner"></div>
-        <p>Loading articles...</p>
-      </div>
-    )
+      // Filter by companies
+      if (filters.companies.length > 0) {
+        const hasMatchingCompany = filters.companies.some(company =>
+          article.companies?.includes(company)
+        )
+        if (!hasMatchingCompany) return false
+      }
+
+      // Filter by topics
+      if (filters.topics.length > 0) {
+        const hasMatchingTopic = filters.topics.some(topic =>
+          article.topics?.includes(topic)
+        )
+        if (!hasMatchingTopic) return false
+      }
+
+      // Filter by date range
+      if (filters.dateRange !== 'all' && article.published_at) {
+        const articleDate = new Date(article.published_at)
+        const now = new Date()
+        const daysDiff = (now.getTime() - articleDate.getTime()) / (1000 * 60 * 60 * 24)
+
+        switch (filters.dateRange) {
+          case 'today':
+            if (daysDiff >= 1) return false
+            break
+          case 'week':
+            if (daysDiff >= 7) return false
+            break
+          case 'month':
+            if (daysDiff >= 30) return false
+            break
+        }
+      }
+
+      return true
+    })
+
+    // If no filters are active and not showing all articles, return only top 9
+    const noFiltersActive = filters.companies.length === 0 && 
+                          filters.topics.length === 0 && 
+                          filters.dateRange === 'all' &&
+                          filters.minRelevanceScore === 7
+
+    if (noFiltersActive && !showAllArticles) {
+      return filtered.slice(0, 9)
+    }
+
+    return filtered
   }
 
-  if (error) {
-    return <div className="articles-error">{error}</div>
-  }
-
-  if (!articles || articles.length === 0) {
-    return <div className="articles-empty">No articles yet. Click "Fetch Latest News" to get started.</div>
-  }
-
-  // Take only the first 9 articles
-  const displayedArticles = articles.slice(0, 9)
+  const filteredArticles = filterArticles(articles)
 
   return (
     <div className="articles-container">
-      <div className="articles-grid">
-        {displayedArticles.map((article) => (
-          <div key={article.id} className="article-card">
-            <div className="article-content">
-              <h3 className="article-title">
-                <a href={article.url} target="_blank" rel="noopener noreferrer">
-                  {article.title}
-                </a>
-              </h3>
-              <p className="article-summary">{article.summary}</p>
-              <div className="article-footer">
-                <div className="article-meta">
-                  <span className="article-date">
-                    {new Date(article.created_at).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric'
-                    })}
-                  </span>
-                  <span className="article-score" title="AI Relevance Score">
-                    🎯 {(article.relevance_score ?? 7.0).toFixed(1)}
-                  </span>
+      <FilterBar filters={filters} onFiltersChange={setFilters} />
+      <FetchNewsButton filters={filters} />
+      
+      {loading ? (
+        <div className="message">Loading articles...</div>
+      ) : error ? (
+        <div className="message error">{error}</div>
+      ) : filteredArticles.length === 0 ? (
+        <div className="message">No articles found matching your criteria.</div>
+      ) : (
+        <>
+          <div className="articles-grid">
+            {filteredArticles.map((article) => (
+              <div key={article.url} className="article-card">
+                <div className="article-content">
+                  <h3 className="article-title">
+                    <a href={article.url} target="_blank" rel="noopener noreferrer">
+                      {article.title}
+                    </a>
+                  </h3>
+                  <p className="article-summary">{article.summary}</p>
+                  <div className="article-metadata">
+                    {article.companies?.map((company) => (
+                      <span key={company} className="article-tag">
+                        {company}
+                      </span>
+                    ))}
+                    {article.topics?.map((topic) => (
+                      <span key={topic} className="article-tag">
+                        {topic}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="article-source-date">
+                    <span>{article.source}</span>
+                    <span>{new Date(article.published_at).toLocaleDateString()}</span>
+                  </div>
                 </div>
-                <a 
-                  href={article.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="article-link"
-                  aria-label={`Read more about ${article.title}`}
-                >
-                  <svg 
-                    className="arrow-icon" 
-                    width="20" 
-                    height="20" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="2" 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round"
-                  >
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                    <polyline points="12 5 19 12 12 19"></polyline>
-                  </svg>
-                </a>
               </div>
-            </div>
+            ))}
           </div>
-        ))}
-      </div>
+          {filteredArticles.length > 9 && !showAllArticles && (
+            <button 
+              className="show-more-button"
+              onClick={() => setShowAllArticles(true)}
+            >
+              Show All Articles
+            </button>
+          )}
+        </>
+      )}
     </div>
   )
 } 

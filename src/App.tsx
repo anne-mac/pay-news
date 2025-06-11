@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react'
 import { Chat } from './components/Chat'
 import { ArticleList } from './components/ArticleList'
-import { FetchNewsButton } from './components/FetchNewsButton'
 import './App.css'
 
 function App() {
@@ -34,10 +33,7 @@ function App() {
         <h1>🚀 PayNews Pro</h1>
       </header>
       <main>
-        <div className="news-section">
-          <FetchNewsButton />
-          <ArticleList />
-        </div>
+        <ArticleList />
         <div className="chat-section">
           <h2>AI Chat Assistant</h2>
           <Chat />

@@ -1,9 +1,14 @@
 import { useState } from 'react'
 import { fetchAndStorePerplexityNews } from '../services/perplexityService'
 import { useArticles } from '../hooks/useArticles'
+import type { FilterOptions } from './FilterBar'
 import './FetchNewsButton.css'
 
-export function FetchNewsButton() {
+interface FetchNewsButtonProps {
+  filters: FilterOptions
+}
+
+export function FetchNewsButton({ filters }: FetchNewsButtonProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { addArticle } = useArticles()
@@ -13,8 +18,8 @@ export function FetchNewsButton() {
     setError(null)
     
     try {
-      console.log('Starting to fetch news...')
-      const articles = await fetchAndStorePerplexityNews(addArticle)
+      console.log('Starting to fetch news with filters:', filters)
+      const articles = await fetchAndStorePerplexityNews(addArticle, filters)
       console.log('Successfully fetched articles:', articles)
     } catch (error: any) {
       console.error('Failed to fetch news:', error)

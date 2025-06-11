@@ -4,6 +4,7 @@ import axios from 'axios';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { createClient } from '@supabase/supabase-js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -20,8 +21,30 @@ console.log('Environment variables loaded:', {
 });
 
 const app = express();
-app.use(cors());
+
+// More explicit CORS configuration
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
+
+// Initialize Supabase client
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Add a test endpoint
+app.get('/api/test', (req, res) => {
+  res.json({ status: 'Server is running correctly' });
+});
 
 const PERPLEXITY_API_KEY = process.env.VITE_PERPLEXITY_API_KEY;
 
@@ -29,70 +52,368 @@ const PERPLEXITY_API_KEY = process.env.VITE_PERPLEXITY_API_KEY;
 console.log('API Key available:', !!PERPLEXITY_API_KEY);
 console.log('API Key length:', PERPLEXITY_API_KEY?.length);
 
+// Helper function to extract JSON from text
+function extractJSONFromText(text) {
+  try {
+    // First try to parse the entire text as JSON
+    try {
+      const result = JSON.parse(text);
+      if (Array.isArray(result)) {
+        return result;
+      }
+    } catch (e) {
+      console.log('Direct JSON parse failed, attempting to extract JSON array');
+    }
+
+    // Find the JSON array in the text
+    const jsonStart = text.indexOf('```json');
+    const jsonEnd = text.lastIndexOf('```');
+    
+    if (jsonStart === -1 || jsonEnd <= jsonStart) {
+      throw new Error('No JSON array found in response');
+    }
+    
+    // Extract the content between the ```json and ``` markers
+    const jsonContent = text.substring(jsonStart + 7, jsonEnd).trim();
+    console.log('Attempting to parse JSON array:', jsonContent);
+    
+    const result = JSON.parse(jsonContent);
+    if (!Array.isArray(result)) {
+      throw new Error('Extracted content is not an array');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('JSON extraction failed:', error);
+    throw new Error(`Failed to extract JSON: ${error.message}`);
+  }
+}
+
+// Helper function to construct search prompt based on filters
+function constructSearchPrompt(filters) {
+  let prompt = `Find the top 100 most relevant and recent news articles`;
+
+  // Add company filters
+  if (filters.companies && filters.companies.length > 0) {
+    prompt += ` about ${filters.companies.join(', ')}`;
+  }
+
+  // Add topic filters
+  if (filters.topics && filters.topics.length > 0) {
+    prompt += ` focusing on ${filters.topics.join(', ')}`;
+  }
+
+  prompt += `
+
+For each article, you MUST provide ALL of the following fields:
+{
+  "title": "Full article title",
+  "url": "Complete, direct link to the article",
+  "summary": "One sentence summary focusing on AI/autonomous payment aspects",
+  "relevance_score": "Score from 1-10 based on relevance to AI payments",
+  "published_at": "YYYY-MM-DD date when the article was published",
+  "source": "Abbreviated source name (e.g., TechCrunch -> TC, The Verge -> Verge)",
+  "companies": ["Array of mentioned companies"],
+  "topics": ["Array of relevant topics"]
+}
+
+REQUIREMENTS:
+1. ALL fields must be provided for each article
+2. URLs must be complete, valid, and directly accessible
+3. Summaries must specifically highlight AI/autonomous payment aspects
+4. Only include articles from verifiable sources
+5. Articles must have a relevance score of 7 or higher
+6. Do not include articles without specific, working URLs
+7. Sort results by relevance_score (descending)
+
+Format your response as a JSON array. Return only the most relevant articles that meet ALL criteria.`
+
+  return prompt;
+}
+
+// Helper function to extract companies from text
+function extractCompanies(text) {
+  const companies = [
+    'Stripe', 'PayOS', 'Sardine', 'Plaid', 'Visa', 'Mastercard'
+  ];
+  return companies.filter(company => 
+    text.toLowerCase().includes(company.toLowerCase())
+  );
+}
+
+// Helper function to extract topics from text
+function extractTopics(text) {
+  const topics = [
+    'AI', 'Fraud', 'Payments', 'Risk', 'Compliance',
+    'Machine Learning', 'Automation', 'Security'
+  ];
+  return topics.filter(topic => 
+    text.toLowerCase().includes(topic.toLowerCase())
+  );
+}
+
+// Helper function to process articles with metadata
+function processArticles(articles) {
+  return articles.map(article => {
+    const text = `${article.title} ${article.summary}`;
+    return {
+      ...article,
+      companies: extractCompanies(text),
+      topics: extractTopics(text),
+      published_at: new Date().toISOString() // In a real app, we'd parse this from the article
+    };
+  });
+}
+
+// Helper function to fetch supplementary articles from Supabase
+async function fetchSupplementaryArticles(filters, limit = 100) {
+  try {
+    let query = supabase
+      .from('payarticles')
+      .select('*')
+      .order('relevance_score', { ascending: false });
+
+    // Apply filters
+    if (filters.companies && filters.companies.length > 0) {
+      query = query.contains('companies', filters.companies);
+    }
+    if (filters.topics && filters.topics.length > 0) {
+      query = query.contains('topics', filters.topics);
+    }
+    if (filters.minRelevanceScore) {
+      query = query.gte('relevance_score', filters.minRelevanceScore);
+    }
+    if (filters.dateRange && filters.dateRange !== 'all') {
+      const now = new Date();
+      let startDate;
+      switch (filters.dateRange) {
+        case 'today':
+          startDate = new Date(now.setDate(now.getDate() - 1));
+          break;
+        case 'week':
+          startDate = new Date(now.setDate(now.getDate() - 7));
+          break;
+        case 'month':
+          startDate = new Date(now.setMonth(now.getMonth() - 1));
+          break;
+      }
+      query = query.gte('published_at', startDate.toISOString());
+    }
+
+    query = query.limit(limit);
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching from Supabase:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error in fetchSupplementaryArticles:', error);
+    return [];
+  }
+}
+
+// Helper function to deduplicate articles
+function deduplicateArticles(articles) {
+  const seen = new Set();
+  return articles.filter(article => {
+    const key = article.url;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+// Helper function to combine and sort articles
+function combineAndSortArticles(perplexityArticles, supabaseArticles, limit = 100) {
+  const combined = [...perplexityArticles, ...supabaseArticles];
+  const deduplicated = deduplicateArticles(combined);
+  const sorted = deduplicated.sort((a, b) => b.relevance_score - a.relevance_score);
+  return sorted.slice(0, limit);
+}
+
+// Helper function to fetch articles from Perplexity
+async function fetchArticlesFromPerplexity(prompt) {
+  if (!PERPLEXITY_API_KEY) {
+    throw new Error('Perplexity API key is not configured');
+  }
+
+  const requestData = {
+    model: 'sonar',
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a helpful AI assistant focused on providing accurate and concise information about finance and technology news.'
+      },
+      {
+        role: 'user',
+        content: prompt
+      }
+    ]
+  };
+
+  try {
+    const response = await axios.post(
+      'https://api.perplexity.ai/chat/completions',
+      requestData,
+      {
+        headers: {
+          'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      }
+    );
+
+    const content = response.data.choices[0].message.content;
+    return extractJSONFromText(content);
+  } catch (error) {
+    console.error('Error fetching from Perplexity:', error);
+    throw error;
+  }
+}
+
 app.post('/api/chat', async (req, res) => {
   try {
-    console.log('Received request:', req.body);
+    const { prompt, filters } = req.body;
+    
+    // Get articles from Perplexity
+    const perplexityArticles = await fetchArticlesFromPerplexity(prompt);
+    
+    // Get supplementary articles from Supabase
+    const supabaseArticles = await fetchSupplementaryArticles(filters);
+    
+    // Combine, deduplicate, and sort articles
+    const combinedArticles = combineAndSortArticles(perplexityArticles, supabaseArticles);
+    
+    res.json(combinedArticles);
+  } catch (error) {
+    console.error('Error in chat endpoint:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/search-articles', async (req, res) => {
+  try {
+    console.log('Received filtered search request:', req.body);
     
     if (!PERPLEXITY_API_KEY) {
-      console.error('API Key missing. Environment:', {
-        key_exists: !!process.env.VITE_PERPLEXITY_API_KEY,
-        key_length: process.env.VITE_PERPLEXITY_API_KEY?.length
-      });
       throw new Error('Perplexity API key is not configured');
     }
+
+    if (!req.body.filters) {
+      throw new Error('No filters provided in request');
+    }
+
+    const searchPrompt = constructSearchPrompt(req.body.filters);
+    console.log('Constructed search prompt:', searchPrompt);
 
     const requestData = {
       model: 'sonar',
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful AI assistant focused on providing accurate and concise information about finance and technology news.'
+          content: 'You are a helpful AI assistant focused on finding and summarizing relevant news articles. IMPORTANT: Your response must be a valid JSON array ONLY, with no additional text before or after the array.'
         },
         {
           role: 'user',
-          content: req.body.prompt
+          content: searchPrompt
         }
       ]
     };
 
-    console.log('Sending request to Perplexity:', requestData);
-
-    try {
-      const response = await axios.post(
-        'https://api.perplexity.ai/chat/completions',
-        requestData,
-        {
-          headers: {
-            'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
+    console.log('Sending request to Perplexity...');
+    const response = await axios.post(
+      'https://api.perplexity.ai/chat/completions',
+      requestData,
+      {
+        headers: {
+          'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         }
-      );
+      }
+    );
 
-      console.log('Received response:', response.data);
-      res.json(response.data);
-    } catch (axiosError) {
-      console.error('Axios error details:', {
-        status: axiosError.response?.status,
-        statusText: axiosError.response?.statusText,
-        data: axiosError.response?.data,
-        headers: axiosError.response?.headers,
-        message: axiosError.message
-      });
-      throw axiosError;
+    console.log('Received response from Perplexity');
+    
+    if (!response.data?.choices?.[0]?.message?.content) {
+      console.error('Invalid response structure:', response.data);
+      throw new Error('Invalid response structure from Perplexity API');
     }
+
+    const content = response.data.choices[0].message.content;
+    console.log('Raw content from Perplexity:', content);
+    
+    let articles;
+    try {
+      // First try to parse the entire content as JSON
+      articles = JSON.parse(content);
+    } catch (e) {
+      console.log('Direct JSON parse failed, attempting to extract JSON array');
+      // If that fails, try to extract the JSON array
+      const start = content.indexOf('[');
+      const end = content.lastIndexOf(']') + 1;
+      
+      if (start === -1 || end <= 0) {
+        throw new Error('No JSON array found in response');
+      }
+      
+      const jsonContent = content.substring(start, end);
+      console.log('Attempting to parse extracted JSON array:', jsonContent);
+      articles = JSON.parse(jsonContent);
+    }
+
+    if (!Array.isArray(articles)) {
+      throw new Error('Parsed content is not an array');
+    }
+
+    // Process articles to add metadata
+    const processedArticles = processArticles(articles);
+
+    // Ensure articles meet minimum relevance score and other criteria
+    const validArticles = processedArticles.filter(article => {
+      const isValid = article.title && 
+                     article.url && 
+                     article.summary &&
+                     article.relevance_score &&
+                     typeof article.url === 'string' && 
+                     typeof article.summary === 'string' &&
+                     typeof article.relevance_score === 'number' &&
+                     article.title.trim() !== '' &&
+                     article.url.trim() !== '' &&
+                     article.summary.trim() !== '' &&
+                     article.relevance_score >= (req.body.filters.minRelevanceScore || 7) &&
+                     article.url.startsWith('http');
+
+      if (!isValid) {
+        console.warn('Filtering out invalid article:', article);
+      }
+      return isValid;
+    });
+
+    // Sort by relevance score
+    validArticles.sort((a, b) => b.relevance_score - a.relevance_score);
+
+    if (validArticles.length === 0) {
+      throw new Error('No valid articles found that match the criteria');
+    }
+
+    res.json({ articles: validArticles });
   } catch (error) {
-    console.error('Detailed error:', {
+    console.error('Search articles error:', {
       message: error.message,
       response: error.response?.data,
-      status: error.response?.status,
-      headers: error.response?.headers
+      status: error.response?.status
     });
     
     res.status(500).json({
-      error: 'Failed to get response from Perplexity API',
-      details: error.response?.data || error.message
+      error: 'Failed to search articles',
+      details: error.message
     });
   }
 });
