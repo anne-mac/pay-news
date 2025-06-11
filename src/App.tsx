@@ -2,9 +2,30 @@ import './App.css'
 
 function App() {
   return (
-    <div style={{ padding: '20px', backgroundColor: 'white' }}>
-      <h1 style={{ color: 'blue' }}>Test Header</h1>
-      <p>If you can see this, the app is working!</p>
+    <div className="app">
+      <header className="app-header">
+        <h1>🚀 PayNews - Your Fintech News Hub</h1>
+      </header>
+      <main className="app-main">
+        <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+          <button 
+            style={{ 
+              padding: '10px 20px', 
+              fontSize: '16px', 
+              backgroundColor: '#2563eb',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer'
+            }}
+          >
+            Fetch Latest News
+          </button>
+        </div>
+        <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+          <p>Your fintech news will appear here!</p>
+        </div>
+      </main>
     </div>
   )
 }
