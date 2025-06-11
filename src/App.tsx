@@ -8,7 +8,7 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>🚀 PayNews Pro - Vercel Test</h1>
+        <h1>🚀 PayNews Pro - Token Test</h1>
         <p style={{ 
           color: 'rgba(255, 255, 255, 0.9)', 
           textAlign: 'center',
