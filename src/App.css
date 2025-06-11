@@ -92,6 +92,7 @@ main {
   padding: 0.5rem 1rem;
   border-radius: 4px;
   max-width: 80%;
+  color: white;
 }
 
 .message.user {
@@ -118,6 +119,7 @@ main {
 
 .message-content {
   line-height: 1.4;
+  color: white;
 }
 
 .input-form {
