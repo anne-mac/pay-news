@@ -1,13 +1,5 @@
 {
-  "buildCommand": "echo \"VITE_SUPABASE_URL=$VITE_SUPABASE_URL\" && vite build",
-  "devCommand": "vite",
-  "installCommand": "npm install",
   "framework": "vite",
-  "outputDirectory": "dist",
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ]
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist"
 } 
