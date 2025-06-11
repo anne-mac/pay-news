@@ -1,78 +1,61 @@
 import axios from 'axios'
 import type { ArticleInsert } from '../types/database.types'
 
-const PERPLEXITY_API_KEY = import.meta.env.VITE_PERPLEXITY_API_KEY
-const API_URL = 'https://api.perplexity.ai/chat/completions'
+const API_URL = import.meta.env.PROD ? '/api/chat' : 'http://localhost:3001/api/chat'
 
 const generateNewsPrompt = () => `
-You are a fintech industry analyst specializing in payment infrastructure and venture capital. Find 5-10 recent, high-impact news articles focusing on:
+Find 5 recent news articles about fintech companies, focusing on:
+- Stripe
+- PayOS
+- Sardine
+- Plaid
+- Visa/Mastercard
 
-Primary Focus (High Priority):
-1. PayOS and their partner Sardine - any news, partnerships, or developments
-2. Agentic payments and autonomous payment systems
-3. VC investments in payment infrastructure startups
-4. Major developments from key players in agentic payments:
-   - Stripe
-   - Plaid
-   - Modern Treasury
-   - Circle
-   - Visa/Mastercard's autonomous payment initiatives
+For each article, you MUST provide ALL of the following fields (no fields can be empty or missing):
+{
+  "title": "Full article title",
+  "url": "Complete, direct link to the article",
+  "summary": "One sentence summary of the key points"
+}
 
-Secondary Focus:
-- Embedded finance platforms enabling autonomous transactions
-- AI-driven payment processing and automation
-- Regulatory developments affecting autonomous payment systems
-- New startups in the agentic payments space
-- Strategic partnerships between payment providers and AI companies
+IMPORTANT:
+- ALL fields must be provided for each article
+- URLs must be complete and valid
+- Summaries must be informative and complete
+- Do not include any articles with missing information
 
-Format your response as a JSON array. For each article, provide:
-[
-  {
-    "title": "Article title",
-    "url": "Full article URL",
-    "summary": "2-3 sentence summary highlighting relevance to agentic payments or VC activity",
-    "fetched_at": "${new Date().toISOString()}"
-  }
-]
-
-Prioritize articles from the last two weeks. Only include articles from reputable financial and technology news sources. Ensure all URLs are valid direct links.`.trim()
+Format your response as a JSON array of exactly 5 articles. Only include articles from reputable sources.`.trim()
 
 export async function fetchPerplexityNews(): Promise<ArticleInsert[]> {
   try {
-    if (!PERPLEXITY_API_KEY) {
-      throw new Error('Perplexity API key is not configured')
-    }
-
     console.log('Starting Perplexity API call...')
 
-    const response = await axios.post(
-      API_URL,
-      {
-        model: 'sonar',
-        messages: [
-          {
-            role: 'user',
-            content: generateNewsPrompt()
-          }
-        ]
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
       },
-      {
-        headers: {
-          'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    )
+      body: JSON.stringify({ prompt: generateNewsPrompt() })
+    })
 
-    if (!response.data || !response.data.choices || !response.data.choices[0]) {
-      console.error('Unexpected API response structure:', response.data)
-      throw new Error('Invalid response structure from Perplexity API')
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('API Error:', errorText)
+      throw new Error(`Chat API error: ${response.status} ${response.statusText}`)
     }
 
-    console.log('Perplexity API Response:', JSON.stringify(response.data, null, 2))
+    const data = await response.json()
+    console.log('Raw API Response:', data)
+
+    if (!data.choices || !data.choices[0]?.message?.content) {
+      console.error('Invalid API response structure:', data)
+      throw new Error('Invalid response format from Chat API')
+    }
 
     // Parse the response content as JSON
-    const content = response.data.choices[0].message.content.trim()
+    const content = data.choices[0].message.content.trim()
+    console.log('Content to parse:', content)
+    
     let articles: ArticleInsert[]
     
     try {
@@ -89,40 +72,42 @@ export async function fetchPerplexityNews(): Promise<ArticleInsert[]> {
       console.log('Attempting to parse JSON:', jsonContent)
       
       articles = JSON.parse(jsonContent)
+      console.log('Successfully parsed articles:', articles)
+
+      // Validate each article has required fields
+      articles = articles.filter(article => {
+        const isValid = article.title && article.url && article.summary &&
+                       typeof article.title === 'string' && 
+                       typeof article.url === 'string' && 
+                       typeof article.summary === 'string' &&
+                       article.title.trim() !== '' &&
+                       article.url.trim() !== '' &&
+                       article.summary.trim() !== ''
+
+        if (!isValid) {
+          console.warn('Filtering out invalid article:', article)
+        }
+        return isValid
+      })
+
+      if (articles.length === 0) {
+        throw new Error('No valid articles found in response')
+      }
+
     } catch (error: any) {
       console.error('Failed to parse Perplexity response:', error)
       console.error('Raw content:', content)
       throw new Error(`Failed to parse JSON response: ${error.message || 'Unknown parsing error'}`)
     }
 
-    // Validate the articles
-    const validArticles = articles.filter(article => 
-      article.title && 
-      article.url && 
-      article.url.startsWith('http') && 
-      article.summary
-    )
+    // Add fetched_at timestamp to each article
+    articles = articles.map(article => ({
+      ...article,
+      fetched_at: new Date().toISOString()
+    }))
 
-    console.log(`Found ${validArticles.length} valid articles out of ${articles.length} total`)
-
-    if (validArticles.length === 0) {
-      console.error('No valid articles after filtering:', articles)
-      throw new Error('No valid articles found in Perplexity response')
-    }
-
-    return validArticles
+    return articles
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      const errorData = error.response?.data
-      console.error('Perplexity API network error:', {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: errorData,
-        message: error.message
-      })
-      const errorMessage = errorData?.error?.message || error.message
-      throw new Error(`Perplexity API error: ${errorMessage}`)
-    }
     console.error('Error fetching news from Perplexity:', error)
     throw error
   }
@@ -135,7 +120,7 @@ export async function fetchAndStorePerplexityNews(
     console.log('Fetching news from Perplexity...')
     const articles = await fetchPerplexityNews()
     
-    console.log('Storing articles in Supabase...')
+    console.log('Storing articles...')
     const promises = articles.map(article => addArticle(article))
     const results = await Promise.all(promises)
     console.log('Articles stored successfully:', results)
