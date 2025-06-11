@@ -4,9 +4,8 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs18.x",
-      "memory": 1024
+    "api/chat/index.js": {
+      "runtime": "@vercel/node@18"
     }
   },
   "routes": [
