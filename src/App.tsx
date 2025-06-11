@@ -31,7 +31,7 @@ function App() {
       <main className="app-main">
         <div style={{ textAlign: 'center', marginTop: '2rem' }}>
           <div className="counter-section">
-            <h2>Test Counter</h2>
+            <h2>Interactive Counter</h2>
             <p className="count-display">{count}</p>
             <div className="button-group">
               <button 
