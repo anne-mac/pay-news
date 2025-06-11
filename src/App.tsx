@@ -1,26 +1,10 @@
 import './App.css'
-import { useEffect } from 'react'
-import { ArticleList } from './components/ArticleList'
-import { FetchNewsButton } from './components/FetchNewsButton'
 
 function App() {
-  useEffect(() => {
-    console.log('App mounted')
-    // Log environment variables (only first few characters for security)
-    console.log('VITE_SUPABASE_URL exists:', !!import.meta.env.VITE_SUPABASE_URL)
-    console.log('VITE_SUPABASE_ANON_KEY exists:', !!import.meta.env.VITE_SUPABASE_ANON_KEY)
-    console.log('VITE_PERPLEXITY_API_KEY exists:', !!import.meta.env.VITE_PERPLEXITY_API_KEY)
-  }, [])
-
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>🚀 PayNews - Your Fintech News Hub</h1>
-      </header>
-      <main className="app-main">
-        <FetchNewsButton />
-        <ArticleList />
-      </main>
+    <div style={{ padding: '20px', backgroundColor: 'white' }}>
+      <h1 style={{ color: 'blue' }}>Test Header</h1>
+      <p>If you can see this, the app is working!</p>
     </div>
   )
 }
