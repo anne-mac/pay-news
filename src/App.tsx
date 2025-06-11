@@ -8,7 +8,7 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>🚀 PayNews</h1>
+        <h1>🚀 PayNews Pro</h1>
         <p style={{ 
           color: 'rgba(255, 255, 255, 0.9)', 
           textAlign: 'center',
@@ -19,6 +19,13 @@ function App() {
           marginRight: 'auto'
         }}>
           Your Gateway to Fintech Innovation
+        </p>
+        <p style={{
+          color: 'rgba(255, 255, 255, 0.6)',
+          fontSize: '0.8rem',
+          marginTop: '0.5rem'
+        }}>
+          Last updated: {new Date().toLocaleString()}
         </p>
       </header>
       <main className="app-main">
