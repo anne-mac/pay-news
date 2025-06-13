@@ -2,6 +2,40 @@ export const config = {
   runtime: 'edge'
 };
 
+// Helper function to extract JSON array from text
+function extractJsonArray(text) {
+  try {
+    // First try direct JSON parse
+    const parsed = JSON.parse(text);
+    
+    // If it's the Perplexity API response structure
+    if (parsed.choices && parsed.choices[0]?.message?.content) {
+      // Extract the JSON string from the content
+      const content = parsed.choices[0].message.content;
+      const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch) {
+        const jsonStr = jsonMatch[1];
+        return JSON.parse(jsonStr);
+      }
+    }
+    
+    // If it's already an array, return it
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    
+    // If it's an object with articles array
+    if (parsed.articles && Array.isArray(parsed.articles)) {
+      return parsed.articles;
+    }
+    
+    throw new Error('No valid article array found in response');
+  } catch (error) {
+    console.error('Error parsing JSON:', error);
+    throw new Error(`Failed to extract JSON: ${error.message}`);
+  }
+}
+
 export default async function handler(req) {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -14,7 +48,8 @@ export default async function handler(req) {
 
   try {
     const body = await req.json();
-    const { prompt } = body;
+    const { message, prompt } = body;
+    const userMessage = message || prompt;
     
     if (!process.env.VITE_PERPLEXITY_API_KEY) {
       throw new Error('Perplexity API key is not configured');
@@ -25,11 +60,11 @@ export default async function handler(req) {
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful AI assistant focused on providing accurate and concise information about finance and technology news.'
+          content: 'You are a helpful assistant that provides news articles in a specific JSON format. Always respond with a JSON array of articles, each containing title, url, summary, and relevance_score fields. Wrap the JSON array in ```json``` code blocks.'
         },
         {
           role: 'user',
-          content: prompt
+          content: userMessage.trim()
         }
       ]
     };
@@ -45,14 +80,29 @@ export default async function handler(req) {
 
     const data = await response.json();
     
-    return new Response(JSON.stringify(data), {
+    if (!data.choices || !data.choices[0]?.message?.content) {
+      throw new Error('Invalid response format from Perplexity API');
+    }
+
+    const content = data.choices[0].message.content;
+    const articles = extractJsonArray(content);
+    
+    if (!Array.isArray(articles) || articles.length === 0) {
+      throw new Error('No valid articles found in response');
+    }
+
+    return new Response(JSON.stringify({ articles }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json'
       }
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error('API Error:', error);
+    return new Response(JSON.stringify({ 
+      error: 'Failed to get response from Perplexity API',
+      details: error.message 
+    }), {
       status: 500,
       headers: {
         'Content-Type': 'application/json'
