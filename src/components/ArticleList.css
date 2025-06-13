@@ -76,6 +76,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;
 }
 
 .article-card:hover {
@@ -182,11 +183,12 @@
   font-size: 0.8rem;
   font-weight: 500;
   position: absolute;
-  bottom: 0;
-  left: 0;
+  bottom: 16px;
+  left: 16px;
   margin: 0;
   display: inline-flex;
   align-items: center;
+  z-index: 1;
 }
 
 .articles-loading {
