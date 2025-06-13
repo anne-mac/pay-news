@@ -55,48 +55,45 @@ export function useArticles() {
     try {
       console.log('Adding new article:', article)
       
-      // Check for duplicates in current state using URL instead of title
+      // Check for duplicates in current state using URL
       const exists = articles.some(a => a.url === article.url)
-      if (exists) {
-        console.log('Article already exists:', article.url)
-        return
-      }
-
-      // Insert into Supabase
-      const { data, error } = await supabase
-        .from('payarticles')
-        .insert([article])
-        .select()
-        .single()
-
-      if (error) {
-        throw error
-      }
-
-      console.log('Successfully added article to Supabase:', data)
       
-      // Update local state
-      setArticles(prev => {
-        const newArticles = [data, ...prev]
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(newArticles))
-        return newArticles
-      })
-    } catch (err) {
-      console.error('Error adding article:', err)
-      setError(err instanceof Error ? err.message : 'Failed to add article')
-      
-      // Fallback to local storage only if Supabase fails
-      const newArticle: Article = {
+      // Create a temporary article for display
+      const tempArticle: Article = {
         ...article,
         id: crypto.randomUUID(),
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        companies: [],
+        topics: []
       }
-      
+
+      // Always update local state to show the article
       setArticles(prev => {
-        const newArticles = [newArticle, ...prev]
+        const newArticles = [tempArticle, ...prev]
         localStorage.setItem(STORAGE_KEY, JSON.stringify(newArticles))
         return newArticles
       })
+
+      // Only store in Supabase if it's not a duplicate
+      if (!exists) {
+        const { data, error } = await supabase
+          .from('payarticles')
+          .insert([article])
+          .select()
+          .single()
+
+        if (error) {
+          console.error('Error storing in Supabase:', error)
+          // Continue even if Supabase storage fails
+        } else {
+          console.log('Successfully added article to Supabase:', data)
+        }
+      } else {
+        console.log('Article already exists in Supabase:', article.url)
+      }
+    } catch (err) {
+      console.error('Error processing article:', err)
+      setError(err instanceof Error ? err.message : 'Failed to process article')
     }
   }
 
