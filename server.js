@@ -84,7 +84,7 @@ function extractJsonArray(text) {
     throw new Error('No valid article array found in response');
   } catch (error) {
     console.error('Error parsing JSON:', error);
-    return [];
+    throw new Error(`Failed to extract JSON: ${error.message}`);
   }
 }
 
@@ -319,7 +319,7 @@ app.post('/api/chat', async (req, res) => {
     const articles = extractJsonArray(JSON.stringify(response.data));
     console.log('Extracted articles:', articles);
     
-    res.json(articles);
+    res.json({ articles });
   } catch (error) {
     console.error('Error in /api/chat:', error);
     res.status(500).json({ error: error.message });

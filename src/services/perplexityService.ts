@@ -49,7 +49,7 @@ export async function fetchPerplexityNews(filters = {}): Promise<ArticleInsert[]
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ 
-        prompt: generateNewsPrompt(),
+        message: generateNewsPrompt(),
         filters
       })
     })
@@ -60,11 +60,15 @@ export async function fetchPerplexityNews(filters = {}): Promise<ArticleInsert[]
       throw new Error(`Chat API error: ${response.status} ${response.statusText}`)
     }
 
-    const articles = await response.json()
-    console.log('Received articles:', articles)
+    const data = await response.json()
+    console.log('Received response:', data)
+
+    if (!data.articles || !Array.isArray(data.articles)) {
+      throw new Error('Invalid response format: articles array not found')
+    }
 
     // Add fetched_at timestamp to each article
-    return articles.map((article: ArticleInsert) => ({
+    return data.articles.map((article: ArticleInsert) => ({
       ...article,
       fetched_at: new Date().toISOString()
     }))
