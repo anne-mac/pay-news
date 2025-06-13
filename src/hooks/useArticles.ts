@@ -55,10 +55,10 @@ export function useArticles() {
     try {
       console.log('Adding new article:', article)
       
-      // Check for duplicates in current state
-      const exists = articles.some(a => a.title === article.title)
+      // Check for duplicates in current state using URL instead of title
+      const exists = articles.some(a => a.url === article.url)
       if (exists) {
-        console.log('Article already exists:', article.title)
+        console.log('Article already exists:', article.url)
         return
       }
 

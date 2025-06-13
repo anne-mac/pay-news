@@ -9,6 +9,7 @@ export interface Article {
   source: string
   companies: string[]
   topics: string[]
+  created_at: string
 }
 
 export type ArticleInsert = Omit<Article, 'id' | 'companies' | 'topics' | 'created_at'> 
