@@ -2,52 +2,64 @@ export const config = {
   runtime: 'edge'
 };
 
+// Helper function to validate JSON
+function isValidJSON(str) {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Helper function to extract JSON array from text
 function extractJsonArray(text) {
   try {
     // First try direct JSON parse
-    const parsed = JSON.parse(text);
+    if (isValidJSON(text)) {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      if (parsed.articles && Array.isArray(parsed.articles)) {
+        return parsed.articles;
+      }
+    }
     
     // If it's the Perplexity API response structure
-    if (parsed.choices && parsed.choices[0]?.message?.content) {
-      const content = parsed.choices[0].message.content;
-      
-      // Try to extract JSON from code blocks first
-      const jsonMatch = content.match(/```(?:json)?\n([\s\S]*?)\n```/);
-      if (jsonMatch) {
-        try {
-          const jsonStr = jsonMatch[1];
-          const extracted = JSON.parse(jsonStr);
-          if (Array.isArray(extracted)) {
-            return extracted;
+    if (text.includes('choices') && text.includes('message')) {
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed.choices && parsed.choices[0]?.message?.content) {
+          const content = parsed.choices[0].message.content;
+          
+          // Try to extract JSON from code blocks first
+          const jsonMatch = content.match(/```(?:json)?\n([\s\S]*?)\n```/);
+          if (jsonMatch) {
+            const jsonStr = jsonMatch[1];
+            if (isValidJSON(jsonStr)) {
+              const extracted = JSON.parse(jsonStr);
+              if (Array.isArray(extracted)) {
+                return extracted;
+              }
+            }
           }
-        } catch (e) {
-          console.log('Failed to parse JSON from code block:', e);
-        }
-      }
-      
-      // If no code block or parsing failed, try to find JSON array in the content
-      const arrayMatch = content.match(/\[\s*\{[\s\S]*\}\s*\]/);
-      if (arrayMatch) {
-        try {
-          const extracted = JSON.parse(arrayMatch[0]);
-          if (Array.isArray(extracted)) {
-            return extracted;
+          
+          // If no code block or parsing failed, try to find JSON array in the content
+          const arrayMatch = content.match(/\[\s*\{[\s\S]*\}\s*\]/);
+          if (arrayMatch) {
+            const jsonStr = arrayMatch[0];
+            if (isValidJSON(jsonStr)) {
+              const extracted = JSON.parse(jsonStr);
+              if (Array.isArray(extracted)) {
+                return extracted;
+              }
+            }
           }
-        } catch (e) {
-          console.log('Failed to parse JSON array from content:', e);
         }
+      } catch (e) {
+        console.log('Failed to parse Perplexity response structure:', e);
       }
-    }
-    
-    // If it's already an array, return it
-    if (Array.isArray(parsed)) {
-      return parsed;
-    }
-    
-    // If it's an object with articles array
-    if (parsed.articles && Array.isArray(parsed.articles)) {
-      return parsed.articles;
     }
     
     throw new Error('No valid article array found in response');
@@ -56,6 +68,14 @@ function extractJsonArray(text) {
     throw new Error(`Failed to extract JSON: ${error.message}`);
   }
 }
+
+// Fallback article when parsing fails
+const fallbackArticle = {
+  title: "Failed to load article",
+  summary: "The AI response couldn't be parsed. Please refresh or try again later.",
+  url: "#",
+  relevance_score: 0
+};
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
@@ -80,12 +100,24 @@ export default async function handler(req) {
       throw new Error('Perplexity API key is not configured');
     }
 
+    const systemPrompt = `You are a helpful assistant that provides news articles in a specific JSON format. 
+    Return ONLY valid JSON with the following structure:
+    [
+      {
+        "title": "Article title",
+        "url": "Article URL",
+        "summary": "Article summary",
+        "relevance_score": number between 0-10
+      }
+    ]
+    Do not include any text outside of the JSON array. Ensure all URLs are valid and start with http:// or https://.`;
+
     const requestData = {
       model: 'sonar',
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful assistant that provides news articles in a specific JSON format. Always respond with a JSON array of articles, each containing title, url, summary, and relevance_score fields. Wrap the JSON array in ```json``` code blocks.'
+          content: systemPrompt
         },
         {
           role: 'user',
@@ -108,19 +140,54 @@ export default async function handler(req) {
       throw new Error(`Perplexity API error: ${response.status} ${errorData.error?.message || response.statusText}`);
     }
 
-    const data = await response.json();
-    
-    if (!data.choices || !data.choices[0]?.message?.content) {
-      throw new Error('Invalid response format from Perplexity API');
-    }
+    // Get raw response text first
+    const responseText = await response.text();
+    console.log('Raw response from Perplexity:', responseText);
 
-    const content = data.choices[0].message.content;
-    console.log('Raw content from Perplexity:', content);
-    
-    const articles = extractJsonArray(content);
+    let articles;
+    try {
+      articles = extractJsonArray(responseText);
+    } catch (error) {
+      console.error('Failed to extract articles:', error);
+      // Return fallback article if parsing fails
+      return new Response(JSON.stringify({ articles: [fallbackArticle] }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    }
     
     if (!Array.isArray(articles) || articles.length === 0) {
-      throw new Error('No valid articles found in response');
+      console.log('No valid articles found, returning fallback');
+      return new Response(JSON.stringify({ articles: [fallbackArticle] }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    }
+
+    // Validate each article has required fields
+    articles = articles.filter(article => {
+      const isValid = article.title && 
+                     article.url && 
+                     article.summary && 
+                     typeof article.relevance_score === 'number';
+      if (!isValid) {
+        console.log('Filtered out invalid article:', article);
+      }
+      return isValid;
+    });
+
+    if (articles.length === 0) {
+      console.log('No valid articles after filtering, returning fallback');
+      return new Response(JSON.stringify({ articles: [fallbackArticle] }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
     }
 
     return new Response(JSON.stringify({ articles }), {
@@ -133,7 +200,8 @@ export default async function handler(req) {
     console.error('API Error:', error);
     return new Response(JSON.stringify({ 
       error: 'Failed to get response from Perplexity API',
-      details: error.message 
+      details: error.message,
+      articles: [fallbackArticle]
     }), {
       status: 500,
       headers: {
