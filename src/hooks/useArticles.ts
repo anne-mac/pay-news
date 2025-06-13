@@ -55,9 +55,6 @@ export function useArticles() {
     try {
       console.log('Adding new article:', article)
       
-      // Check for duplicates in current state using URL
-      const exists = articles.some(a => a.url === article.url)
-      
       // Create a temporary article for display
       const tempArticle: Article = {
         ...article,
@@ -67,14 +64,24 @@ export function useArticles() {
         topics: []
       }
 
-      // Always update local state to show the article
+      // Update local state to show the article
       setArticles(prev => {
-        const newArticles = [tempArticle, ...prev]
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(newArticles))
-        return newArticles
+        // Check if article already exists in localStorage using URL
+        const exists = prev.some(a => a.url === article.url)
+        
+        // Only add to localStorage if it's not a duplicate
+        if (!exists) {
+          const newArticles = [tempArticle, ...prev]
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(newArticles))
+          return newArticles
+        }
+        
+        // If it's a duplicate, just return the existing articles
+        return prev
       })
 
       // Only store in Supabase if it's not a duplicate
+      const exists = articles.some(a => a.url === article.url)
       if (!exists) {
         const { data, error } = await supabase
           .from('payarticles')
