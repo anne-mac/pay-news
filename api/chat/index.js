@@ -10,12 +10,33 @@ function extractJsonArray(text) {
     
     // If it's the Perplexity API response structure
     if (parsed.choices && parsed.choices[0]?.message?.content) {
-      // Extract the JSON string from the content
       const content = parsed.choices[0].message.content;
-      const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/);
+      
+      // Try to extract JSON from code blocks first
+      const jsonMatch = content.match(/```(?:json)?\n([\s\S]*?)\n```/);
       if (jsonMatch) {
-        const jsonStr = jsonMatch[1];
-        return JSON.parse(jsonStr);
+        try {
+          const jsonStr = jsonMatch[1];
+          const extracted = JSON.parse(jsonStr);
+          if (Array.isArray(extracted)) {
+            return extracted;
+          }
+        } catch (e) {
+          console.log('Failed to parse JSON from code block:', e);
+        }
+      }
+      
+      // If no code block or parsing failed, try to find JSON array in the content
+      const arrayMatch = content.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (arrayMatch) {
+        try {
+          const extracted = JSON.parse(arrayMatch[0]);
+          if (Array.isArray(extracted)) {
+            return extracted;
+          }
+        } catch (e) {
+          console.log('Failed to parse JSON array from content:', e);
+        }
       }
     }
     
@@ -51,6 +72,10 @@ export default async function handler(req) {
     const { message, prompt } = body;
     const userMessage = message || prompt;
     
+    if (!userMessage || typeof userMessage !== 'string' || userMessage.trim() === '') {
+      throw new Error('Message is required and must be a non-empty string');
+    }
+    
     if (!process.env.VITE_PERPLEXITY_API_KEY) {
       throw new Error('Perplexity API key is not configured');
     }
@@ -78,6 +103,11 @@ export default async function handler(req) {
       body: JSON.stringify(requestData)
     });
 
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Perplexity API error: ${response.status} ${errorData.error?.message || response.statusText}`);
+    }
+
     const data = await response.json();
     
     if (!data.choices || !data.choices[0]?.message?.content) {
@@ -85,6 +115,8 @@ export default async function handler(req) {
     }
 
     const content = data.choices[0].message.content;
+    console.log('Raw content from Perplexity:', content);
+    
     const articles = extractJsonArray(content);
     
     if (!Array.isArray(articles) || articles.length === 0) {
