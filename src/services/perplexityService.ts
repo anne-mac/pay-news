@@ -49,8 +49,7 @@ export async function fetchPerplexityNews(filters = {}): Promise<ArticleInsert[]
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ 
-        message: generateNewsPrompt(),
-        filters
+        message: generateNewsPrompt()
       })
     })
 

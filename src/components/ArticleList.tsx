@@ -19,6 +19,12 @@ export function ArticleList() {
     if (!articles) return []
     
     const filtered = articles.filter(article => {
+      // Filter out articles without valid URLs
+      if (!article.url || typeof article.url !== 'string' || !article.url.trim() || !article.url.startsWith('http')) {
+        console.warn('Filtering out article without valid URL:', article);
+        return false;
+      }
+
       // Filter by minimum relevance score
       if (article.relevance_score < filters.minRelevanceScore) {
         return false

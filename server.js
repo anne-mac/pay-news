@@ -281,6 +281,93 @@ async function fetchArticlesFromPerplexity(prompt) {
   }
 }
 
+// Helper function to clean and validate article data
+function cleanArticleData(article) {
+  // Ensure all required fields exist and are strings
+  const cleaned = {
+    title: String(article.title || '').trim(),
+    url: String(article.url || '').trim(),
+    summary: String(article.summary || '').trim(),
+    relevance_score: Number(article.relevance_score) || 0
+  };
+
+  // Validate URL format
+  try {
+    new URL(cleaned.url);
+  } catch {
+    return null; // Invalid URL, return null to filter out
+  }
+
+  // Return null if any required field is empty
+  if (!cleaned.title || !cleaned.url || !cleaned.summary || cleaned.relevance_score <= 0) {
+    return null;
+  }
+
+  return cleaned;
+}
+
+// Helper function to extract and clean JSON array from text
+function extractAndCleanJsonArray(content) {
+  try {
+    // First try to parse the entire content as JSON
+    const parsed = JSON.parse(content);
+    if (Array.isArray(parsed)) {
+      return parsed.map(cleanArticleData).filter(Boolean);
+    }
+  } catch (e) {
+    console.log('Direct JSON parse failed, attempting to extract JSON array');
+  }
+
+  // If direct parse fails, try to extract JSON array
+  const start = content.indexOf('[');
+  const end = content.lastIndexOf(']') + 1;
+  
+  if (start === -1 || end <= 0) {
+    throw new Error('No JSON array found in response');
+  }
+  
+  const jsonContent = content.substring(start, end);
+  console.log('Attempting to parse extracted JSON array:', jsonContent);
+  
+  try {
+    const parsed = JSON.parse(jsonContent);
+    if (Array.isArray(parsed)) {
+      return parsed.map(cleanArticleData).filter(Boolean);
+    }
+  } catch (e) {
+    // If JSON parsing fails, try to manually parse the array
+    const articles = [];
+    let currentArticle = {};
+    let inArticle = false;
+    let currentField = '';
+    let currentValue = '';
+    
+    const lines = jsonContent.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      if (trimmed === '{') {
+        inArticle = true;
+        currentArticle = {};
+      } else if (trimmed === '}') {
+        inArticle = false;
+        const cleaned = cleanArticleData(currentArticle);
+        if (cleaned) articles.push(cleaned);
+      } else if (inArticle) {
+        const match = trimmed.match(/^"([^"]+)":\s*(.+)$/);
+        if (match) {
+          const [, field, value] = match;
+          currentArticle[field] = value.replace(/,$/, '').replace(/^"|"$/g, '');
+        }
+      }
+    }
+    
+    return articles;
+  }
+  
+  throw new Error('Failed to parse articles from response');
+}
+
 app.post('/api/chat', async (req, res) => {
   try {
     const { message, prompt } = req.body;
@@ -346,7 +433,7 @@ app.post('/api/search-articles', async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful AI assistant focused on finding and summarizing relevant news articles. IMPORTANT: Your response must be a valid JSON array ONLY, with no additional text before or after the array.'
+          content: 'You are a helpful AI assistant focused on finding and summarizing relevant news articles. IMPORTANT: Your response must be a valid JSON array ONLY, with no additional text before or after the array. Each article must have a title, url, summary, and relevance_score. The url must be a valid HTTP/HTTPS URL.'
         },
         {
           role: 'user',
@@ -378,61 +465,19 @@ app.post('/api/search-articles', async (req, res) => {
     const content = response.data.choices[0].message.content;
     console.log('Raw content from Perplexity:', content);
     
-    let articles;
-    try {
-      // First try to parse the entire content as JSON
-      articles = JSON.parse(content);
-    } catch (e) {
-      console.log('Direct JSON parse failed, attempting to extract JSON array');
-      // If that fails, try to extract the JSON array
-      const start = content.indexOf('[');
-      const end = content.lastIndexOf(']') + 1;
-      
-      if (start === -1 || end <= 0) {
-        throw new Error('No JSON array found in response');
-      }
-      
-      const jsonContent = content.substring(start, end);
-      console.log('Attempting to parse extracted JSON array:', jsonContent);
-      articles = JSON.parse(jsonContent);
-    }
+    const articles = extractAndCleanJsonArray(content);
 
-    if (!Array.isArray(articles)) {
-      throw new Error('Parsed content is not an array');
+    if (!Array.isArray(articles) || articles.length === 0) {
+      throw new Error('No valid articles found that match the criteria');
     }
 
     // Process articles to add metadata
     const processedArticles = processArticles(articles);
 
-    // Ensure articles meet minimum relevance score and other criteria
-    const validArticles = processedArticles.filter(article => {
-      const isValid = article.title && 
-                     article.url && 
-                     article.summary &&
-                     article.relevance_score &&
-                     typeof article.url === 'string' && 
-                     typeof article.summary === 'string' &&
-                     typeof article.relevance_score === 'number' &&
-                     article.title.trim() !== '' &&
-                     article.url.trim() !== '' &&
-                     article.summary.trim() !== '' &&
-                     article.relevance_score >= (req.body.filters.minRelevanceScore || 7) &&
-                     article.url.startsWith('http');
-
-      if (!isValid) {
-        console.warn('Filtering out invalid article:', article);
-      }
-      return isValid;
-    });
-
     // Sort by relevance score
-    validArticles.sort((a, b) => b.relevance_score - a.relevance_score);
+    processedArticles.sort((a, b) => b.relevance_score - a.relevance_score);
 
-    if (validArticles.length === 0) {
-      throw new Error('No valid articles found that match the criteria');
-    }
-
-    res.json({ articles: validArticles });
+    res.json({ articles: processedArticles });
   } catch (error) {
     console.error('Search articles error:', {
       message: error.message,
