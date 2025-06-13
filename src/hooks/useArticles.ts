@@ -55,35 +55,27 @@ export function useArticles() {
     try {
       console.log('Adding new article:', article)
       
-      // Create a temporary article for display
-      const tempArticle: Article = {
-        ...article,
-        id: crypto.randomUUID(),
-        created_at: new Date().toISOString(),
-        companies: [],
-        topics: []
-      }
+      // First check if article exists in Supabase
+      const { data: existingArticles } = await supabase
+        .from('payarticles')
+        .select('*')
+        .eq('url', article.url)
+        .order('created_at', { ascending: false })
+        .limit(1)
 
-      // Update local state to show the article
-      setArticles(prev => {
-        // Check if article already exists in localStorage using URL
-        const exists = prev.some(a => a.url === article.url)
-        
-        // Only add to localStorage if it's not a duplicate
-        if (!exists) {
-          const newArticles = [tempArticle, ...prev]
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(newArticles))
-          return newArticles
-        }
-        
-        // If it's a duplicate, just return the existing articles
-        return prev
-      })
-
-      // Only store in Supabase if it's not a duplicate
-      const exists = articles.some(a => a.url === article.url)
-      if (!exists) {
-        const { data, error } = await supabase
+      if (existingArticles && existingArticles.length > 0) {
+        // If article exists in Supabase, use that version
+        console.log('Using existing article from Supabase:', existingArticles[0])
+        setArticles(prev => {
+          // Only add if not already in the list
+          if (!prev.some(a => a.id === existingArticles[0].id)) {
+            return [existingArticles[0], ...prev]
+          }
+          return prev
+        })
+      } else {
+        // If article doesn't exist in Supabase, create new one
+        const { data: newArticle, error } = await supabase
           .from('payarticles')
           .insert([article])
           .select()
@@ -91,12 +83,19 @@ export function useArticles() {
 
         if (error) {
           console.error('Error storing in Supabase:', error)
-          // Continue even if Supabase storage fails
-        } else {
-          console.log('Successfully added article to Supabase:', data)
+          // Create temporary article for display
+          const tempArticle: Article = {
+            ...article,
+            id: crypto.randomUUID(),
+            created_at: new Date().toISOString(),
+            companies: [],
+            topics: []
+          }
+          setArticles(prev => [tempArticle, ...prev])
+        } else if (newArticle) {
+          console.log('Successfully added new article to Supabase:', newArticle)
+          setArticles(prev => [newArticle, ...prev])
         }
-      } else {
-        console.log('Article already exists in Supabase:', article.url)
       }
     } catch (err) {
       console.error('Error processing article:', err)

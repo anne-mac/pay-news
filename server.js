@@ -24,9 +24,10 @@ const app = express();
 
 // More explicit CORS configuration
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: /^http:\/\/localhost:\d+$/,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: true
 }));
 
 app.use(express.json());
@@ -245,7 +246,7 @@ async function fetchArticlesFromPerplexity(prompt) {
     messages: [
       {
         role: 'system',
-        content: 'You are a helpful AI assistant focused on providing accurate and concise information about finance and technology news.'
+        content: 'You are a helpful assistant that provides news articles in a specific JSON format. Always respond with a JSON array of articles, each containing title, url, summary, and relevance_score fields. Wrap the JSON array in ```json``` code blocks.'
       },
       {
         role: 'user',
@@ -255,20 +256,25 @@ async function fetchArticlesFromPerplexity(prompt) {
   };
 
   try {
-    const response = await axios.post(
-      'https://api.perplexity.ai/chat/completions',
-      requestData,
-      {
-        headers: {
-          'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
+    const response = await axios.post('https://api.perplexity.ai/chat/completions', requestData, {
+      headers: {
+        'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
+        'Content-Type': 'application/json'
       }
-    );
+    });
+
+    if (!response.data || !response.data.choices || !response.data.choices[0]?.message?.content) {
+      throw new Error('Invalid response format from Perplexity API');
+    }
 
     const content = response.data.choices[0].message.content;
-    return extractJsonArray(content);
+    const articles = extractJsonArray(content);
+    
+    if (!Array.isArray(articles) || articles.length === 0) {
+      throw new Error('No valid articles found in response');
+    }
+
+    return articles;
   } catch (error) {
     console.error('Error fetching from Perplexity:', error);
     throw error;
@@ -277,8 +283,13 @@ async function fetchArticlesFromPerplexity(prompt) {
 
 app.post('/api/chat', async (req, res) => {
   try {
-    const { message } = req.body;
-    console.log('Received message:', message);
+    const { message, prompt } = req.body;
+    const userMessage = message || prompt;
+    console.log('Received message:', userMessage);
+
+    if (!userMessage || typeof userMessage !== 'string' || userMessage.trim() === '') {
+      throw new Error('Message is required and must be a non-empty string');
+    }
 
     const response = await axios.post(
       'https://api.perplexity.ai/chat/completions',
@@ -291,7 +302,7 @@ app.post('/api/chat', async (req, res) => {
           },
           {
             role: 'user',
-            content: message
+            content: userMessage.trim()
           }
         ]
       },
@@ -440,3 +451,48 @@ const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 }); 
+
+function extractJSONFromText(text) {
+  try {
+    // First try direct JSON parse
+    const jsonMatch = text.match(/\[\s*\{.*\}\s*\]/s)
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0])
+      } catch (e) {
+        console.log('Direct JSON parse failed, attempting to extract JSON array')
+      }
+    }
+
+    // If direct parse fails, try to extract and fix the JSON array
+    const arrayMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/)
+    if (arrayMatch) {
+      let jsonStr = arrayMatch[0]
+      console.log('Attempting to parse JSON array:', jsonStr)
+
+      // Fix unquoted summary values
+      jsonStr = jsonStr.replace(/"summary":\s*([^"][^,}]*[^"}\s])/g, '"summary": "$1"')
+      
+      // Fix other common JSON formatting issues
+      jsonStr = jsonStr
+        // Fix missing quotes around property names
+        .replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3')
+        // Fix missing commas between objects
+        .replace(/}\s*{/g, '},{')
+        // Fix trailing commas
+        .replace(/,(\s*[}\]])/g, '$1')
+
+      try {
+        return JSON.parse(jsonStr)
+      } catch (e) {
+        console.error('JSON extraction failed:', e)
+        throw new Error(`Failed to extract JSON: ${e.message}`)
+      }
+    }
+
+    throw new Error('No JSON array found in response')
+  } catch (error) {
+    console.error('Error in extractJSONFromText:', error)
+    throw error
+  }
+} 
