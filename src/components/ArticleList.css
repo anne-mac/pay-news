@@ -153,6 +153,7 @@
   padding-top: 16px;
   border-top: 1px solid #e5e7eb;
   align-items: center;
+  position: relative;
 }
 
 .article-tag {
@@ -180,7 +181,10 @@
   border-radius: 4px;
   font-size: 0.8rem;
   font-weight: 500;
-  margin-right: 8px;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  margin: 0;
   display: inline-flex;
   align-items: center;
 }
