@@ -64,7 +64,9 @@ function extractJsonArray(text) {
       const content = parsed.choices[0].message.content;
       const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[1]);
+        const jsonStr = jsonMatch[1];
+        console.log('Extracted JSON string:', jsonStr);
+        return JSON.parse(jsonStr);
       }
     }
     
