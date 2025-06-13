@@ -52,40 +52,36 @@ const PERPLEXITY_API_KEY = process.env.VITE_PERPLEXITY_API_KEY;
 console.log('API Key available:', !!PERPLEXITY_API_KEY);
 console.log('API Key length:', PERPLEXITY_API_KEY?.length);
 
-// Helper function to extract JSON from text
-function extractJSONFromText(text) {
+// Helper function to extract JSON array from text
+function extractJsonArray(text) {
   try {
-    // First try to parse the entire text as JSON
-    try {
-      const result = JSON.parse(text);
-      if (Array.isArray(result)) {
-        return result;
+    // First try direct JSON parse
+    const parsed = JSON.parse(text);
+    
+    // If it's the Perplexity API response structure
+    if (parsed.choices && parsed.choices[0]?.message?.content) {
+      // Extract the JSON string from the content
+      const content = parsed.choices[0].message.content;
+      const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[1]);
       }
-    } catch (e) {
-      console.log('Direct JSON parse failed, attempting to extract JSON array');
-    }
-
-    // Find the JSON array in the text
-    const jsonStart = text.indexOf('```json');
-    const jsonEnd = text.lastIndexOf('```');
-    
-    if (jsonStart === -1 || jsonEnd <= jsonStart) {
-      throw new Error('No JSON array found in response');
     }
     
-    // Extract the content between the ```json and ``` markers
-    const jsonContent = text.substring(jsonStart + 7, jsonEnd).trim();
-    console.log('Attempting to parse JSON array:', jsonContent);
-    
-    const result = JSON.parse(jsonContent);
-    if (!Array.isArray(result)) {
-      throw new Error('Extracted content is not an array');
+    // If it's already an array, return it
+    if (Array.isArray(parsed)) {
+      return parsed;
     }
-
-    return result;
+    
+    // If it's an object with articles array
+    if (parsed.articles && Array.isArray(parsed.articles)) {
+      return parsed.articles;
+    }
+    
+    throw new Error('No valid article array found in response');
   } catch (error) {
-    console.error('JSON extraction failed:', error);
-    throw new Error(`Failed to extract JSON: ${error.message}`);
+    console.error('Error parsing JSON:', error);
+    return [];
   }
 }
 
@@ -270,7 +266,7 @@ async function fetchArticlesFromPerplexity(prompt) {
     );
 
     const content = response.data.choices[0].message.content;
-    return extractJSONFromText(content);
+    return extractJsonArray(content);
   } catch (error) {
     console.error('Error fetching from Perplexity:', error);
     throw error;
@@ -279,20 +275,40 @@ async function fetchArticlesFromPerplexity(prompt) {
 
 app.post('/api/chat', async (req, res) => {
   try {
-    const { prompt, filters } = req.body;
+    const { message } = req.body;
+    console.log('Received message:', message);
+
+    const response = await axios.post(
+      'https://api.perplexity.ai/chat/completions',
+      {
+        model: 'sonar',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful assistant that provides news articles in a specific JSON format. Always respond with a JSON array of articles, each containing title, url, summary, and relevance_score fields. Wrap the JSON array in ```json``` code blocks.'
+          },
+          {
+            role: 'user',
+            content: message
+          }
+        ]
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.VITE_PERPLEXITY_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    console.log('Perplexity API response:', JSON.stringify(response.data, null, 2));
     
-    // Get articles from Perplexity
-    const perplexityArticles = await fetchArticlesFromPerplexity(prompt);
+    const articles = extractJsonArray(JSON.stringify(response.data));
+    console.log('Extracted articles:', articles);
     
-    // Get supplementary articles from Supabase
-    const supabaseArticles = await fetchSupplementaryArticles(filters);
-    
-    // Combine, deduplicate, and sort articles
-    const combinedArticles = combineAndSortArticles(perplexityArticles, supabaseArticles);
-    
-    res.json(combinedArticles);
+    res.json(articles);
   } catch (error) {
-    console.error('Error in chat endpoint:', error);
+    console.error('Error in /api/chat:', error);
     res.status(500).json({ error: error.message });
   }
 });

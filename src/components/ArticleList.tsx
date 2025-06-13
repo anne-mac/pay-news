@@ -4,16 +4,19 @@ import type { Article } from '../types/database.types'
 import { FilterBar, type FilterOptions } from './FilterBar'
 import { FetchNewsButton } from './FetchNewsButton'
 import './ArticleList.css'
+import axios from 'axios'
 
 export function ArticleList() {
-  const { articles, loading, error } = useArticles()
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showAllArticles, setShowAllArticles] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
     companies: [],
     topics: [],
     dateRange: 'all',
     minRelevanceScore: 7
-  })
-  const [showAllArticles, setShowAllArticles] = useState(false)
+  });
 
   const filterArticles = (articles: Article[]) => {
     if (!articles) return []
@@ -76,6 +79,43 @@ export function ArticleList() {
   }
 
   const filteredArticles = filterArticles(articles)
+
+  const fetchArticles = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.post('/api/chat', { message: 'Get latest news about AI in fintech' });
+      const data = response.data;
+      
+      // Ensure we have an array of articles
+      if (!Array.isArray(data)) {
+        console.error('Received non-array response:', data);
+        setError('Invalid response format from server');
+        return;
+      }
+      
+      // Validate each article has required fields
+      const validArticles = data.filter(article => 
+        article && 
+        typeof article === 'object' && 
+        article.title && 
+        article.url && 
+        article.summary
+      );
+      
+      if (validArticles.length === 0) {
+        setError('No valid articles found in response');
+        return;
+      }
+      
+      setArticles(validArticles);
+    } catch (err) {
+      console.error('Error fetching articles:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch articles');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="articles-container">
