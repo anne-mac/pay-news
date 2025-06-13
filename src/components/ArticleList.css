@@ -182,13 +182,9 @@
   border-radius: 4px;
   font-size: 0.8rem;
   font-weight: 500;
-  position: absolute;
-  bottom: 16px;
-  left: 16px;
-  margin: 0;
+  margin-right: 8px;
   display: inline-flex;
   align-items: center;
-  z-index: 1;
 }
 
 .articles-loading {

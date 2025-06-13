@@ -107,7 +107,6 @@ export function ArticleList() {
                   </h3>
                   <p className="article-summary">{article.summary}</p>
                   <div className="article-metadata">
-                    <span className="relevance-score">Relevance: {article.relevance_score}/10</span>
                     {article.companies?.map((company) => (
                       <span key={company} className="article-tag">
                         {company}
@@ -120,7 +119,7 @@ export function ArticleList() {
                     ))}
                   </div>
                   <div className="article-source-date">
-                    <span>{article.source}</span>
+                    <span className="relevance-score">Relevance: {article.relevance_score}/10</span>
                     <span>{new Date(article.published_at).toLocaleDateString()}</span>
                   </div>
                 </div>
