@@ -107,6 +107,7 @@ export function ArticleList() {
                   </h3>
                   <p className="article-summary">{article.summary}</p>
                   <div className="article-metadata">
+                    <span className="relevance-score">Relevance: {article.relevance_score}/10</span>
                     {article.companies?.map((company) => (
                       <span key={company} className="article-tag">
                         {company}

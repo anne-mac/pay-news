@@ -152,6 +152,7 @@
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid #e5e7eb;
+  align-items: center;
 }
 
 .article-tag {
@@ -173,9 +174,15 @@
 }
 
 .relevance-score {
-  font-size: 0.875rem;
+  background-color: #f3f4f6;
   color: #4b5563;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
   font-weight: 500;
+  margin-right: 8px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .articles-loading {
